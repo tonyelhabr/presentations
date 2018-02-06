@@ -1,0 +1,401 @@
+---
+title: "Tidvyerse Basics"
+author: "Tony"
+date: "2017-09-21"
+output:
+  html_document:
+    # css: www\styles_tony_crrR.css
+    theme: "united"
+    highlight: "pygments"
+    fig_caption: false
+    toc: true
+    toc_depth: 6
+---
+
+```{r global_options, include = FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(
+  # fig.width = 12,
+  # fig.height = 8,
+  # fig.path = "figs",
+  # out.height = "400px",
+  # out.width = "400px",
+  fig.align = "center",
+  # results = "hide",
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+
+```{r, echo = FALSE}
+library("tidyverse")
+```
+
+
+```{r, echo = FALSE, out.height = "400px",out.width = "400px"}
+knitr::include_graphics("figs/tidyverse_website.png")
+```
+
+# Introduction
+
+Let's tackle some of the biggest questions a person who has never 
+heard of the "tidyverse" might ask.
+
+## What is the "tidyverse"?
+
+Literally, it is a set of packages that follow
+"tidy" data principles. The main packages include `ggplot2`, `dplyr` and `tidyr`.
+More information can be found at the [tidyverse website] [tidyverse_website].
+
+[tidyverse_website]: https://www.tidyverse.org/
+
+<br>
+
+## What are "tidy" data principles?
+
+Here's a quote from the [vignette for the tidyr package] [tidyr_vignette]
+written by Hadley Wickham, who is the author of
+several of the tidyverse packages and one of the leaders of the 
+tidyverse "movement". ^[A vignette is a document that comes with a package
+that explains some of the functions/use cases of a package.]
+
+[tidyr_vignette]: https://cran.r-project.org/web/packages/tidyr/vignettes/tidy-data.html
+
+
+```{r, echo = FALSE, out.width = "600px"}
+knitr::include_graphics("figs/tidy_principles_vignette.png")
+```
+
+To help visualize these principles,
+here's an image from [**R for Data Science**] [r4ds],
+a free online book co-authored by Garrett Grolemund and Hadley Wickham.
+
+[r4ds]: http://r4ds.had.co.nz
+
+
+```{r, echo = FALSE, out.width = "600px"}
+knitr::include_graphics("figs/tidy_principles_r4ds.png")
+```
+
+FYI: The principles of tidy data are "formally" outlined
+in Wickham's paper [**Tidy data**] [tidy_data_paper].
+
+[tidy_data_paper]: http://vita.had.co.nz/papers/tidy-data.html
+
+## What does "untidy" data look like?" 
+
+Here's a list provided by Wickham regarding the most common problems that prevent
+a data set from being tidy. ^[Guidance for the structure and code
+for this section is provided by the tidyr vignette.]
+
+```{r, echo = FALSE, out.width = "400px"}
+knitr::include_graphics("figs/tidy_common_problems_vignette.png")
+```
+
+These common issues might be better understood with a couple of examples.
+
+The following example illustrates the first issue listed by Wickham:
+values encoded as column headers. The data set comes from a report by the Pew
+Research Center regarding the relationship between religion and income in the U.S.
+
+```{r}
+pew <- tbl_df(read.csv("data/pew.csv", stringsAsFactors = FALSE, check.names = FALSE))
+pew
+```
+
+Nevertheless, it can be tidied fairly easily!
+
+```{r}
+pew %>%
+  gather(income, frequency, -religion)
+```
+
+This next example illustrates the second issue: multiple variables in one column.
+This data set reflects tuberculosis information gathered by the World Health Organization.
+
+```{r}
+tb <- tbl_df(read.csv("data/tb.csv", stringsAsFactors = FALSE))
+tb
+```
+
+Although the variables for country and year (i.e. `iso2` and `year`) are already correctly
+encoded as columns, the variables/columns for demographics are combined together across
+several columns. (i.e. `m04`, `m514`, etc.) These columns implicitly store information
+regarding gender and age. The first letter `m` or `f` indicates male or female,
+and the digits indicate age ranges (e.g. `m514` indicates males who are ages 5 through 14).
+
+Two operations are needed to tidy this data set. ^[For illustrative purposes,
+the intermediate result is stored. This does not exactly represent a "best practice".]
+
+
+```{r}
+tb2 <-
+  tb %>% 
+  gather(demo, n, -iso2, -year, na.rm = TRUE)
+tb2
+
+tb3 <-
+  tb2 %>% 
+  separate(demo, c("sex", "age"), 1)
+tb3
+```
+
+More examples can be found in the tidyr vignette.
+
+### A Quick Aside... "What is this 'tibble' that I see in some examples?"
+
+A tibble is just a data frame that is "smart" about how it is printed to the RStudio
+console. ^[Subsetting is also slightly different with tibbles.]
+The **R for Data Science** book explain
+this feature in the following manner.
+
+
+```{r, echo = FALSE, out.width = "600px"}
+knitr::include_graphics("figs/tibble_r4ds.png")
+```
+
+## Why should I use tidy data principles?
+
+  1. It defines a framework for structuring data that makes analysis easier.
+  It facilitates and, in fact, mandates **consistency**.
+
+  2. In terms of programming syntax, tidy data facilitates the use of R's vectorized
+  programming principles. This means that performing operations (e.g. via functions
+  like `summarise()`) on large sets of data
+  and transforming data quickly (e.g. via functions like `mutate()`)
+  is natural and easy.
+
+
+Related to the first point is the idea of having a singular, definitive method
+of performing a single task. Tidyverse functions and tidy data principles
+promote this idea. [^fn_drob] Although one may argue that having many ways 
+of performing the same operation can be an advantage,
+this can also easily lead to "sloppy",
+irreproducible data storage and manipulation.
+
+[^fn_drob]: See [David Robinson's breakdown] [drob_article]
+of the "base R vs. tidyr" argument for more information.
+
+[drob_article]: http://varianceexplained.org/r/teach-tidyverse/
+
+For example, note that there are several valid ways of manipulating a column without using
+tidyverse functions. (Here, I'm using the `mtcars` dataset that is
+automatically loaded when R is loaded.)
+
+```{r}
+mtcars$pounds <- mtcars$wt * 1000
+mtcars[["pounds"]] <- mtcars[["wt"]] / 1000
+mtcars[, "pounds"] <- mtcars[, "wt"] / 1000
+```
+
+The singular "tidy" way of doing the same task is arguably easier to comprehend.
+
+```{r}
+mtcars <-
+  mtcars %>%
+  mutate(pounds = wt / 1000)
+```
+
+
+## What else should I know about the tidyverse and tidy data?
+
+In my opinion, the tidyverse is much more than just a set of packages,
+and tidy data is more than just data structured according to a set of principles.
+These are underlying
+constructs of a larger, more abstract **mentality** that emphasizes
+**readability** and **reproducibility**.
+These principles are coveted in the realm of data science and analysis.
+
+By **readability**, I'm alluding to the manner in which the tidyverse
+naturally emphasizes data manipulation and analysis actions with verbs.
+For example, the [vignette for the dplyr package] [dplyr_vignette]
+describes its implicit implementation of this principle.
+
+[dplyr_vignette]: https://cran.r-project.org/web/packages/dplyr/vignettes/dplyr.html
+
+```{r, echo = FALSE, out.width = "600px"}
+knitr::include_graphics("figs/dplyr_verbs_vignette.png")
+```
+
+FYI: All of dplyr's functionality is captured succintly in the "Data Transformation"
+"cheat sheet" on RStudio's website. [^fn_cheatsheets]
+
+[^fn_cheatsheets]: Many more helpful R
+"cheat sheets" can be found
+at <https://www.rstudio.com/resources/cheatsheets/>.
+
+```{r, echo = FALSE, out.width = "800px"}
+knitr::include_graphics("figs/dplyr_cheatsheet.png")
+```
+
+The readability provided by the verbs in tidyverse functions
+is complemented/facilitated by
+the "pipe" operation. "Piping" can easily be done
+using magrittr's `%>%` operator with functions in tidyverse packages.
+The notion of "piping" may not be completely unfamiliar to those accustomed
+to programming.
+(For example, the "+=" operator implements "piped" addition in C++.)
+To those unfamiliar,
+with piping, it is essentially the composition mathematical function
+(i.e. `x %>% f(y)` is equivalent to `f(x, y)`).
+
+Combined with good code style, piping can make code self-expanatory.
+For example, see the following comparison of dplyr operations
+using the nycflight13 package. ^[This nycflights13 code is
+borrowed from the dplyr vignette.]
+
+```{r, echo = FALSE, eval = FALSE}
+if(!require("nycflights13")){
+  install.packages("nycflights13")
+}
+```
+
+```{r, results = "hold"}
+library("nycflights13")
+dim(flights)
+flights
+```
+
+
+Even though the data is tidy and the code
+uses dplyr functions, the second set of commands using the pipe operator
+are inarguably easier to interpret because the operations are performed in
+an ordered fashion (i.e. left-to-right, top-to-bottom). (The first method is 
+less comprehensible because the operations are performed from "inside to out".)
+
+
+```{r}
+filter(
+  summarise(
+    select(
+      group_by(flights, year, month, day),
+      arr_delay, dep_delay
+    ),
+    arr = mean(arr_delay, na.rm = TRUE),
+    dep = mean(dep_delay, na.rm = TRUE)
+  ),
+  arr > 30 | dep > 30
+)
+```
+
+```{r}
+flights %>%
+  group_by(year, month, day) %>%
+  select(arr_delay, dep_delay) %>%
+  summarise(
+    arr = mean(arr_delay, na.rm = TRUE),
+    dep = mean(dep_delay, na.rm = TRUE)
+  ) %>%
+  filter(arr > 30 | dep > 30)
+
+```
+
+By **reproducibility**, I'm referring to the many tools available to make
+code documentation easy. For example, this document is actually a .Rmd
+document that is converted to html via the `knitr` package. It allows for
+code to be written alongside text, images, and other kinds of figures.
+Notably, I could
+have just as easily turned the same underlying document to a pdf simply by changing
+a single variable.
+
+
+## Why is this all even important? Why can't I just start coding?
+
+<center>
+![](figs/beginner_cat_meme.png)
+</center>
+
+```{r, echo = FALSE}
+# knitr::include_graphics("figs/beginner_cat_meme.png")
+```
+
+Diving into R and learning as much as possible as quickly as possible is
+highly encouraged! However, it is a good idea to learn good data science principles
+early on in your learning so that you can completely avoid frustrations that
+are easily avoidable and mistakes that you might make otherwise.
+
+# Conclusion
+
+To exhibit the power and elegance
+of using tidyverse functions and tidy data principles, here are a
+couple of final examples.
+
+This example comes from an article on David Robinson's blog. [^fn_drob_article]
+The data set concerns gene expression. Note how he is able to easily manipulate
+and visualize the data set to gain meaningful insight.
+
+[^fn_drob_article]: This article
+discusses the "base R vs. tidyr" argument in regards to how to teach beginners.
+He makes a strong case in favor of tidyr principles, or, at the least, not avoiding
+it completely.
+
+```{r, size = "tiny"}
+url <- "http://varianceexplained.org/files/Brauer2008_DataSet1.tds"
+
+
+# Clean and tidy the data
+cleaned_data <- read_delim(url, delim = "\t") %>%
+  separate(NAME, c("name", "BP", "MF", "systematic_name", "number"), sep = "\\|\\|") %>%
+  mutate_at(vars(name:systematic_name), funs(trimws)) %>%
+  select(-number, -GID, -YORF, -GWEIGHT) %>%
+  gather(sample, expression, G0.05:U0.3) %>%
+  separate(sample, c("nutrient", "rate"), sep = 1, convert = TRUE) %>%
+  filter(!is.na(expression), systematic_name != "")
+
+# Visualize a set of four genes
+cleaned_data %>%
+  filter(BP == "leucine biosynthesis") %>%
+  ggplot(aes(rate, expression, color = nutrient)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~name + systematic_name)
+```
+
+Even if you know nothing about gene expression, it should not be too difficult
+to understand the steps that are taken to generate a deliverable that can be
+used to gain understanding. The same could
+not necessarily be said for applying other coding styles/techniques.
+
+This next example is adapted from a very recent RStudio webinar on the exact
+same topic that is discussed here--the tidyverse! [^fn_webinar] 
+It uses the famous "gapminder" data set that is
+seen in some of Hans Rosling TEDTalks.
+
+[^fn_webinar]: See
+https://github.com/rstudio/webinars/tree/master/46-tidyverse-visualisation-and-manipulation-basics
+to download the materials. Also, see https://www.rstudio.com/resources/webinars/
+for RStudio's webinars.
+
+```{r, echo = FALSE, eval = FALSE}
+if(!require("gapminder")){
+  install.packages("gapminder")
+}
+```
+
+
+```{r, size = "tiny"}
+library("gapminder")
+top_10 <-
+  gapminder %>% 
+  filter(year == 1952) %>% 
+  mutate(gdp = pop * gdpPercap) %>% 
+  arrange(desc(gdp)) %>% 
+  top_n(10, gdp) %>% 
+  pull(country)
+# top_10
+
+
+gapminder %>% 
+  filter(country %in% top_10) %>% 
+  mutate(gdp = pop * gdpPercap) %>% 
+  group_by(country) %>% 
+  mutate(scaled_gdp = gdp / first(gdp)) %>% 
+  ggplot() +
+    geom_line(mapping = aes(x = year, y = scaled_gdp, color = country)) +
+  labs(title = "GDP Per Capita (Scaled)")
+```
+
+Again, note how powerful (yet simplistic), the tidyverse can be!
+

@@ -1,0 +1,535 @@
+---
+title: "Logistic Regression Tutorial (By Example)"
+author: "Tony"
+date: "2017-11-14"
+output:
+  html_document:
+    # css: www/styles_tony_minimal.css
+    theme: "united"
+    highlight: "pygments"
+    fig_caption: false
+    toc: true
+    toc_depth: 6
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r global_options, include = FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(
+  # fig.width = 12,
+  # fig.height = 8,
+  # fig.path = "figs",
+  # out.height = "400px",
+  # out.width = "400px",
+  fig.align = "center",
+  # results = "hide",
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE
+)
+```
+
+Perhaps the quickest manner of getting an understanding of logistic regression
+is by comparing it directly to linear regression. We'll do exactly that. First,
+we'll look at theory, then we'll move on to implementation. [^fn_sources]
+
+[^fn_sources]:
+The following sites were used as resources for this tutorial:
+
+    - https://daviddalpiaz.github.io/r4sl/index.html
+    - http://daviddalpiaz.github.io/appliedstats/
+    
+    Some code and phrasing is taken directly from these resources.
+
+# Logistic Regression Theory
+
+Both linear regression and logisitic regression are types of
+**generalized linear models** (GLMs). [^fn_appendix]
+Mathematically, GLMs can be expressed as
+
+$$
+Y \mid {\bf X} = {\bf x} \sim N(\beta_0 + \beta_1x_1 + \ldots + \beta_{p - 1}x_{p - 1}, \ \sigma^2)
+$$
+
+[^fn_appendix]:
+See the appendix for more details regarding the theory discussed here.
+
+The logistic regression framework's inheritance of the GLM form
+is easy to see when observing the generalized
+equations for linear and logisitic regression.
+Recall that linear regression models are defined by the equation
+$$
+Y = \beta_0 + \beta_1x_1 + \ldots + \beta_qx_q + \epsilon, \ \ \epsilon \sim N(0, \sigma^2)
+$$
+
+which calculates the response $Y$ directly. Logisitc regression is defined in 
+a similar manner
+
+$$
+\log\left(\frac{p({\bf x})}{1 - p({\bf x})}\right) = \beta_0 + \beta_1 x_1 + \ldots  + \beta_{p - 1} x_{p - 1}
+$$
+
+
+
+However, in contrast to linear regression, note that the calculation of the response is not direct.
+
+The side of the equation with the response variable is known as the **log odds**. [^fn_logit]
+
+[^fn_logit]:
+The log odds are the [logit](https://en.wikipedia.org/wiki/Logit) transform applied to $p({\bf x})$.
+
+In a binary context, the odds are the probability for a "positive" event $(Y = 1)$ divided by 
+the probability of a "negative" event $(Y = 0)$. [^fn_odds] 
+
+$$
+\frac{p({\bf x})}{1 - p({\bf x})} = \frac{P[Y = 1 \mid {\bf X} = {\bf x}]}{P[Y = 0 \mid {\bf X} = {\bf x}]}
+$$
+
+[^fn_odds]:
+This means that when the odds are $1$, the two events have equal probability.
+Moreover, odds greater than $1$ indicate higher probabiliity for the positive event,
+while the converse is true for odds less than $1$.
+
+
+
+The logistic regression equation guarantees that a value between $0$ and $1$ is calculated.
+This is evident the when the inverse logit transformation is applied, which results
+in a "direct" probability prediction.
+
+$$
+p({\bf x_i}) = P[Y_i = 1 \mid {\bf X_i} = {\bf x_i}] = \frac{e^{\beta_0 + \beta_1 x_{i1} + \cdots + \beta_{p-1} x_{i(p-1)}}}{1 + e^{\beta_0 + \beta_1 x_{i1} + \cdots + \beta_{p-1} x_{i(p-1)}}}
+$$
+
+Note that this is prediction of ***probability***, not a numerical value. This probability
+value must be translated to a categorical prediction.
+
+
+
+## Theory Summary
+
+So, what does this all mean?
+Put simply, linear regression should be used to predict a **quantitative** (i.e. numerical) response variable, while logisitic regression should be used to predict a **qualitiative** (i.e. categorical) response variable.
+(More generally, predicting a categorical response variable is known as **classification**.)
+Visually, the linear model generates a straight line, and the logisitic model
+generates an "S" curve.
+
+```{r echo = FALSE}
+sim_logistic_data <- function(sample_size = 25, beta_0 = -2, beta_1 = 3) {
+  x = rnorm(n = sample_size)
+  eta = beta_0 + beta_1 * x
+  p = 1 / (1 + exp(-eta))
+  y = rbinom(n = sample_size, size = 1, prob = p)
+  data.frame(y, x)
+}
+
+set.seed(1)
+example_data = sim_logistic_data()
+
+fit_lm <- lm(y ~ x, data = example_data)
+fit_glm <- glm(y ~ x, data = example_data, family = binomial)
+
+plot(y ~ x, data = example_data, 
+     pch = 20, ylab = "Estimated Probability", 
+     main = "Ordinary vs Logistic Regression")
+abline(fit_lm, col = "darkorange")
+curve(predict(fit_glm, data.frame(x), type = "response"), 
+      add = TRUE, col = "dodgerblue", lty = 2)
+legend("topleft", c("Ordinary", "Logistic", "Data"), lty = c(1, 2, 0), 
+       pch = c(NA, NA, 20), lwd = 2, col = c("darkorange", "dodgerblue", "black"))
+```
+
+# Logistic Regression Implementation in R
+
+
+For this tutorial, we will use the `Default` dataset from the `ISLR` package.
+
+```{r}
+library("ISLR")
+library("tibble")
+as_tibble(Default)
+```
+
+Our goal is to properly classify people who have defaulted
+based on student status, credit card balance, and income.
+
+## Data Inspection
+
+It is always a good idea to visualize our data before trying to build a model for it.
+For example, density plots are useful for identifying the distribution of the predictors
+relative to one another and to the response variable.
+
+```{r, echo = FALSE}
+library("caret")
+```
+
+```{r, fig.height = 5, fig.width = 10, echo = FALSE}
+featurePlot(x = Default[, c("balance", "income")], 
+            y = Default$default,
+            main = "Default vs. Balance and Income",
+            plot = "density", 
+            scales = list(x = list(relation = "free"), 
+                          y = list(relation = "free")), 
+            adjust = 1.5, 
+            pch = "|", 
+            layout = c(2, 1), 
+            auto.key = list(columns = 2))
+```
+
+Observing that the distributions of `"No"` and `"Yes"` for `default` given `income`
+do not differ much, we might believe that `income` will not be particularly useful
+for our model. On the other hand, there seems to be a big difference in the
+`balance` distributions at a value around 1400 for the two categories of `default`.
+
+
+
+```{r fig.height = 5, fig.width = 10, echo = FALSE}
+featurePlot(x = Default[, c("balance", "income")], 
+            y = Default$student,
+            main = "Student vs. Balance and Income",
+            plot = "density", 
+            scales = list(x = list(relation = "free"), 
+                          y = list(relation = "free")), 
+            adjust = 1.5, 
+            pch = "|", 
+            layout = c(2, 1), 
+            auto.key = list(columns = 2))
+```
+
+We can also observe the distributions of `income` and `balance` with the other
+predictor `student`, which is qualitative (like `default`).
+These density plots indicate that students have much less income than the 
+rest of the population.
+
+## Logistic Regression Model Creation
+
+Although we could do more to inspect the data, let's go 
+ahead and create logistic regression model. To implement good modeling
+practices, we'll create training and testing splits in an attempt to
+avoid under/over-fitting when performing regression.
+
+```{r }
+# Split into train/test splits first.
+set.seed(42)
+default_idx <- sample(nrow(Default), ceiling(nrow(Default) / 2))
+default_trn <-  Default[default_idx, ]
+default_tst <- Default[-default_idx, ]
+
+# Create the model.
+model_glm <- glm(default ~ balance, data = default_trn, family = "binomial")
+```
+
+Creating a logistic regression model should look very similar to creating a
+linear regression model.
+However, instead of `lm()` we use `glm()`.
+Also, note that we must specify `family = "binomial"` for a binary
+classification context.
+(Actually, calling `glm()` with `family = "gaussian"` would be equivalent to `lm()`.)
+
+
+
+Before making any predictions, let's briefly examine the model with `summary()`.
+Among other things, it is important to see what coefficient values have been estimated for our model.
+
+```{r}
+summary(model_glm)
+```
+
+Like the `summary` values calculated for a linear regression model,
+we get quantile information regarding residuals, as well significance
+estimates for our predictors. The interpretation of p-values in the logisitic
+regression framework is the same as that for linear regression models.
+(So the rule of "siginifcant" predictors being associated with `p-value`s less than 5 % also holds.)
+
+However, note that we get a `z value` instead of a `t value`. Without getting
+too much into the theory regarding this difference, one should understand that
+this meaning of this value is analogous to that of a `t value`. [^fn_t_value]
+Also, note that we see `Null deviance`, `AIC`, and `Number of Fisher Scoring iterations`
+instead of `Residual standard error`, `Multipe R-squared`, `Adjusted R-squared`, and
+`F-statistic`.
+
+[^fn_t_value]:
+(Recall that the $t$-value
+is calculated by a $t$-test to affirm (or deny) the null hypothsesis for a given predictor.)
+
+The logistic regression diagnostic values generated by the `summary()` call
+are typically **not** used directly to interpret the "goodness of fit" of a model.
+
+## Logistic Regression Model Prediction
+
+However, before looking more closely at model diagnostics that are more suitable for logistic regression,
+we should first understand how to use the `predict()` function with `glm()`.
+In order to return probabilities, we must specify `type = "response"`.
+(The default setting is `type = "link"`, which corresponds to the log odds value.)
+
+```{r}
+head(predict(model_glm, type = "response"))
+```
+
+As mentioned before, these predicted values are probabliliites, *not* classifications.
+We must "manually" convert the probabilities to classifications. Traditionally,
+a midpoint value such as 0.5 is used to "categorize" the probabilities.
+(This is actually equivalen to specifyng `type = "link"` and using a threshhold value
+of $0$.)
+
+```{r}
+trn_pred <- ifelse(predict(model_glm, type = "response") > 0.5, "Yes", "No")
+head(trn_pred)
+```
+
+## Logistic Regression Model Evaluation
+
+Probably the most common thing that is done to evaluate a classificiation models
+is to compare the actual response values with the predicted ones using a cross-table,
+which is often called a **confusion matrix**. This matrix can be generated with the base 
+`table()` function.
+
+```{r}
+# Making predictions on the train set.
+trn_tab <- table(predicted = trn_pred, actual = default_trn$default)
+trn_tab
+
+# Making predictions on the test set.
+tst_pred <- ifelse(predict(model_glm, newdata = default_tst, type = "response") > 0.5, "Yes", "No")
+tst_tab <- table(predicted = tst_pred, actual = default_tst$default)
+tst_tab
+```
+
+
+
+Perhaps unsurprisingly, the most common metrics for evaluating logistic regression
+models are **error rate** and **accuracy** (which is simply the additive inverse of the error rate).
+These metrics can be calculated directly from the confustion matrix.
+
+```{r}
+calc_class_err <- function(actual, predicted) {
+  mean(actual != predicted)
+}
+```
+
+```{r}
+calc_class_err(actual = default_trn$default, predicted = trn_pred)
+
+# Test error rate should be close to train error rate if model is fitted properly.
+calc_class_err(actual = default_tst$default, predicted = tst_pred)
+```
+<center>
+![](figs/conf_mat.png)
+</center>
+
+Now, let's consider the confusion matrix in more detail now.
+The names **true positive (TP)**, **true negative (TN)**, 
+**false positive (FP)**, and **false negative (FN)**
+are often used to reference the four cells of the confustion matrix.
+
+$$
+\text{Sens} = \text{True Positive Rate} = \frac{\text{TP}}{\text{P}} = \frac{\text{TP}}{\text{TP + FN}}
+$$
+$$
+\text{Spec} = \text{True Negative Rate} = \frac{\text{TN}}{\text{N}} = \frac{\text{TN}}{\text{TN + FP}}
+$$
+$$
+\text{Prev} = \frac{\text{P}}{\text{Total Obs}}= \frac{\text{TP + FN}}{\text{Total Obs}}
+$$
+
+Calculations of metrics such as **sensitivity**, **specificity**, and **prevalance**
+are derived from the confusion matrix. The importance of these (and other) metrics
+is dependent on the nature of the data (e.g. lower values may be acceptable
+if the data is deemed difficult to predict), as well as the tolerance for the type
+of misclassification. For example, we may want to bias our predictions for classifying defaults
+such that we are more likely to predict a default when one does not occur. We must
+carefully identify whether we want to prioritize sensitivity or specificity.
+
+
+
+We can get the values of sensitivity, specificity, prevalance, etc.
+easily for our predictions using the 
+`confusionMatrix()` function from the `caret` package. [^fn_caret]
+
+[^fn_caret]:
+Note that we could do a lot more with the `caret` package, which is perhaps R's most powerful machine learning package.
+
+```{r}
+library("caret")
+confusionMatrix(trn_tab, positive = "Yes")
+```
+
+
+
+Now, let's consider another metric, unrelated to the confusion matrix.
+Remember where we chose the value $0.5$ as a threshhold for classification?
+How do we know that $0.5$ value is the "optimal" value for accuracy. In reality,
+other cutoff values may be better (although $0.5$ will tend to be the best value
+if all model assumptions are true and the sample size is reasonably large).
+
+The **ROC curve** (receiver operating characteristic curve) illustrates the
+sensitivity and specificity for all possible cutoff values. We can
+use the `roc()` function from the `pROC` package to generate the ROC curve for 
+our predictions.
+
+```{r }
+library("pROC")
+test_prob <- predict(model_glm, newdata = default_tst, type = "response")
+test_roc <- roc(default_tst$default ~ test_prob, plot = TRUE, print.auc = TRUE)
+as.numeric(test_roc$auc)
+```
+
+In general, we would like the curve to "hug" the right and upper borders of the 
+plot (indicating high sensitivity and specificity).
+The **AUC** (area under the curve) is used to quantify the visual profile of the ROC.
+
+# "Simple" Logistic Regression Model Alernatives
+
+## A Single-Variable Threshhold Classifier Model
+
+Based on the density plots, we might have reasonably created a very simplistic model
+using only the `balance` predictor. In particular, we could create a model based on the rule
+
+$$
+\hat{C}(\texttt{balance}) = 
+\begin{cases} 
+      \text{Yes} & \texttt{balance} > 1400 \\
+      \text{No} & \texttt{balance} \leq 1400 
+   \end{cases}
+$$
+
+```{r}
+simple_class <- function(x, boundary, above = "Yes", below = "No") {
+  ifelse(x > boundary, above, below)
+}
+```
+
+```{r}
+tst_pred_basic <- simple_class(x = default_tst$balance, boundary = 1400)
+```
+
+```{r, echo = FALSE}
+# This function is already defined.
+calc_class_err <- function(actual, predicted) {
+  mean(actual != predicted)
+}
+```
+
+
+
+Although this appears to be a reasonable model, it turns out that its prediction accuracy
+is actually worse than what we would calculate if we simply predicted that no one defaulted!
+
+```{r}
+tst_pred_all_no <- simple_class(x = default_tst$balance, boundary = 1400, above = "No", below = "No")
+```
+
+(However, predicting all `"No"`s gives worst prediction accuracy than that for our logistic regression model on the test set.
+We get an error rate of 
+```r calc_class_err(actual = default_tst$default, predicted = tst_pred)```
+for our model. Here, we caclulate 
+```r calc_class_err(actual = default_tst$default, predicted = tst_pred_all_no)```
+when predicting all `"No"`s, and 
+```r calc_class_err(actual = default_tst$default, predicted = tst_pred_basic)```
+when using $1400$ as a cutoff value for our model based on a one-variable classifier.)
+
+
+
+
+```{r}
+calc_class_err(actual = default_tst$default,
+               predicted = tst_pred)
+calc_class_err(actual = default_tst$default,
+               predicted = tst_pred_basic)
+calc_class_err(actual = default_tst$default,
+               predicted = tst_pred_all_no)
+```
+
+## Linear Regression Model
+
+Of course, (even after reviewing the theory) we may return to the
+inevitable question **"Why not linear regression?"**
+The main issue, in practice, involves how to interpret the linear regression prediction values
+as probabilities and, subsequently, how to convert the numerical values to categories.
+To better understand this issue, let's go ahead and try a linear regression model.
+(Here, we create a model using all predictors, not just `balance`.)
+
+
+```{r echo = FALSE}
+default_trn_lm = default_trn
+default_tst_lm = default_tst
+default_trn_lm$default = as.numeric(default_trn_lm$default) - 1
+default_tst_lm$default = as.numeric(default_tst_lm$default) - 1
+
+model_lm <- lm(default ~ ., default_trn_lm)
+summary(model_lm)
+```
+
+
+For this case, if we create a linear regression model using all of the predictors,
+then all of the predicted probabilities are below 0.5. Thus, if we were to
+classify every observation below 0.5 as `"No"`, then all of our predictions
+would be `"No"`. Additionally, because the linear model returns predictions with 
+values less than $0$, we would have to figure out how to convert these values to categories.
+
+```{r}
+all(predict(model_lm) < 0.5)
+```
+
+```{r}
+any(predict(model_lm) < 0)
+```
+
+Although we could classify the "upper half" of values
+into the positive category and the "lower half" of values to the negative category
+(in order to avoid the issue of interpreting the linear regressions model's numerical
+predictions), but we would run into another issue in the case that there are more
+than two categories for the response variable. Encoding of the different categories
+to numerical values can become subjective and bias the classifications in such a case.
+For example, we might encode different ethnicities as numerical values for a problem
+in which we are trying to predict a person's heritage, but who is to say one ethnicity
+is "closer" to another?
+(Are 1, 2, and 3 proper values to encode Asian, Hispanic, and European? Order matters!)
+
+Anyways, it should be easy to see why the logistic regression framework is more appropriate for
+classification problems.
+
+# Conclusion
+
+That's it for now. There is certainly much more we could cover, both in terms of theory
+and implementation.
+
+Notably, we haven't discussed a case 
+where there are more than two categories for the response variable.
+In that case, we might use **multinomial logistic regression**. Probably the most
+commonly-used implementation is the `multinom()` function from the `nnet` package.
+However, we will leave this topic for another time.
+
+
+# Appendix
+
+GLMs have three components:
+
+- A **distribution** of the response conditioned on the predictors.
+- A **linear combination** of the $p - 1$ predictors.
+- A **link** function that defines how the linear combination of the predictors
+is related to the mean of the response conditioned on the predictors.
+
+For reference purposes, the following table summarizes the differences between
+linear and logistic regression with respect to the broader GLM framework.
+
+|                 |Linear Regression | Logistic Regression |
+|-----------------|------------------|--------------------|
+| **Distribution of ** $Y \mid {\bf X} = {\bf x}$ | $N(\mu({\bf x}), \sigma^2)$    | $\text{Bern}(p({\bf x}))$                                              |
+| **Distribution Name**                           | Normal                         | Bernoulli (Binomial)                                                   |
+| $\text{E}[Y \mid {\bf X} = {\bf x}]$            | $\mu({\bf x})$                 | $p({\bf x})$                                                           |
+| **Support**                                     | Real: $(-\infty, \infty)$      | Integer: $0, 1$                                                        |
+| **Usage**                                       | Numeric Data                   | Binary (Class: Yes/No) Data                                            |
+| **Link Name**                                   | Identity                       | Logit                                                                  |
+| **Link Function**                               | $\eta({\bf x}) = \mu({\bf x})$ | $\eta({\bf x}) = \log \left(\frac{p({\bf x})}{1 - p({\bf x})} \right)$          |
+| **Mean Function**                               | $\mu({\bf x}) = \eta({\bf x})$ | $p({\bf x}) = \frac{e^{\eta({\bf x})}}{1 + e^{\eta({\bf x})}} = \frac{1}{1 + e^{-\eta({\bf x})}}$ |
+
+Note that logistic regression models do not make the same
+assumption that linear regression makes, including:
+
+- Linear relationship (between the response and the predictors)
+- Multivariate normality (of the predictors)
+- No or little multicollinearity (of the predictors)
+- No auto-correlation
+- Homoscedasticity
