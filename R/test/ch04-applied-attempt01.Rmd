@@ -1,0 +1,206 @@
+---
+title: "Chapter 4: Classification"
+author: "Solutions to Exercises"
+date: "January 12, 2016"
+output: html_document
+---
+
+Source: https://github.com/yahwes/ISLR.
+
+***
+## APPLIED
+***
+
+<a id="ex10"></a>
+
+>EXERCISE 10:
+
+__Part a)__
+
+```{r, warning=FALSE, message=FALSE}
+require(ISLR)
+data(Weekly)
+summary(Weekly)
+pairs(Weekly)
+```
+
+`Year` and `Volume` are positively correlated similar to the `Smarket` data set.
+
+__Part b)__
+
+```{r, warning=FALSE, message=FALSE}
+fit.logit <- glm(Direction~., data=Weekly[,c(2:7,9)], family=binomial)
+summary(fit.logit)
+```
+
+`Lag2` seems to have statistically significant predictive value
+
+__Part c)__
+
+```{r, warning=FALSE, message=FALSE}
+logit.prob <- predict(fit.logit, Weekly, type="response")
+logit.pred <- ifelse(logit.prob > 0.5, "Up", "Down")
+table(logit.pred, Weekly$Direction)
+(54+557)/nrow(Weekly)  # Accuracy=0.56
+```
+
+* When prediction is "Down", model is right 54/(54+48)=52.9%.
+* When prediction is "Up", model is right 557/(430+557)=56.4%
+
+Model is has higher accuracy when the prediction is "Up"
+
+__Part d)__
+
+```{r, warning=FALSE, message=FALSE}
+train.yrs <- Weekly$Year %in% (1990:2008)
+train <- Weekly[train.yrs,]
+test <- Weekly[!train.yrs,]
+fit2 <- glm(Direction~Lag2, data=train, family=binomial)
+fit2.prob <- predict(fit2, test, type="response")
+fit2.pred <- ifelse(fit2.prob > 0.5, "Up", "Down")
+table(fit2.pred, test$Direction)
+mean(fit2.pred == test$Direction)  # Accuracy=0.625
+```
+
+__Part e)__
+
+```{r, warning=FALSE, message=FALSE}
+require(MASS)
+fit.lda <- lda(Direction~Lag2, data=train)
+fit.lda.pred <- predict(fit.lda, test)$class
+table(fit.lda.pred, test$Direction)
+mean(fit.lda.pred == test$Direction)  # Accuracy=0.625
+```
+
+__Part f)__
+
+```{r, warning=FALSE, message=FALSE}
+fit.qda <- qda(Direction~Lag2, data=train)
+fit.qda.pred <- predict(fit.qda, test)$class
+table(fit.qda.pred, test$Direction)
+mean(fit.qda.pred == test$Direction)  # Accuracy=0.587
+```
+
+__Part g)__
+
+```{r, warning=FALSE, message=FALSE}
+require(class)
+set.seed(1)
+train.X <- as.matrix(train$Lag2)
+test.X <- as.matrix(test$Lag2)
+knn.pred <- knn(train.X, test.X, train$Direction, k=1)
+table(knn.pred, test$Direction)
+mean(knn.pred == test$Direction)  # Accuracy=0.500
+```
+
+__Part h)__
+
+The Logistic Regression and LDA models produced the best results
+
+__Part i)__
+
+```{r, warning=FALSE, message=FALSE}
+knn.pred <- knn(train.X, test.X, train$Direction, k=5)
+table(knn.pred, test$Direction)
+mean(knn.pred == test$Direction)
+knn.pred <- knn(train.X, test.X, train$Direction, k=10)
+table(knn.pred, test$Direction)
+mean(knn.pred == test$Direction)
+knn.pred <- knn(train.X, test.X, train$Direction, k=20)
+table(knn.pred, test$Direction)
+mean(knn.pred == test$Direction)
+knn.pred <- knn(train.X, test.X, train$Direction, k=30)
+table(knn.pred, test$Direction)
+mean(knn.pred == test$Direction)
+```
+
+Higher k values for KNN (around 20) seemed to produce the best results when using only Lag2 as predictor.
+
+```{r, warning=FALSE, message=FALSE}
+fit.lda <- lda(Direction~Lag2+I(Lag1^2), data=train)
+fit.lda.pred <- predict(fit.lda, test)$class
+table(fit.lda.pred, test$Direction)
+mean(fit.lda.pred == test$Direction)  # Accuracy=0.644
+```
+
+***
+
+<a id="ex13"></a>
+
+>EXERCISE 13:
+
+```{r, warning=FALSE, message=FALSE}
+data(Boston)
+summary(Boston)
+crim01 <- ifelse(Boston$crim > median(Boston$crim), 1, 0)
+mydf <- data.frame(Boston, crim01)
+pairs(mydf)  # pred1 = age, dis, lstat, medv
+sort(cor(mydf)[1,])  # pred2 = tax, rad (highest correlations with crim)
+set.seed(1)
+trainid <- sample(1:nrow(mydf), nrow(mydf)*0.7 , replace=F)  # 70% train, 30% test
+train <- mydf[trainid,]
+test <- mydf[-trainid,]
+train.X1 <- cbind(train$age, train$dis, train$lstat, train$medv)
+test.X1 <- cbind(test$age, test$dis, test$lstat, test$medv)
+train.X2 <- cbind(train$tax, train$rad)
+test.X2 <- cbind(test$tax, test$rad)
+
+# Logistic Regression models
+fit.logit1 <- glm(crim01~age+dis+lstat+medv, data=train, family=binomial)
+logit1.prob <- predict(fit.logit1, test, type="response")
+logit1.pred <- ifelse(logit1.prob > 0.5, 1, 0)
+mean(logit1.pred != test$crim01)  # error rate
+fit.logit2 <- glm(crim01~tax+rad, data=train, family=binomial)
+logit2.prob <- predict(fit.logit2, test, type="response")
+logit2.pred <- ifelse(logit2.prob > 0.5, 1, 0)
+mean(logit2.pred != test$crim01)  # error rate
+
+# LDA models
+fit.lda1 <- lda(crim01~age+dis+lstat+medv, data=train)
+fit.lda1.pred <- predict(fit.lda1, test)$class
+mean(fit.lda1.pred != test$crim01)  # error rate
+fit.lda2 <- lda(crim01~tax+rad, data=train)
+fit.lda2.pred <- predict(fit.lda2, test)$class
+mean(fit.lda2.pred != test$crim01)  # error rate
+
+# QDA models
+fit.qda1 <- qda(crim01~age+dis+lstat+medv, data=train)
+fit.qda1.pred <- predict(fit.qda1, test)$class
+mean(fit.qda1.pred != test$crim01)  # error rate
+fit.qda2 <- qda(crim01~tax+rad, data=train)
+fit.qda2.pred <- predict(fit.qda2, test)$class
+mean(fit.qda2.pred != test$crim01)  # error rate
+
+# KNN models
+set.seed(1)
+knn1.pred <- knn(train.X1, test.X1, train$crim01, k=1)
+mean(knn1.pred != test$crim01)
+knn1.pred <- knn(train.X1, test.X1, train$crim01, k=5)
+mean(knn1.pred != test$crim01)
+knn1.pred <- knn(train.X1, test.X1, train$crim01, k=10)
+mean(knn1.pred != test$crim01)
+knn1.pred <- knn(train.X1, test.X1, train$crim01, k=20)
+mean(knn1.pred != test$crim01)
+knn1.pred <- knn(train.X1, test.X1, train$crim01, k=50)
+mean(knn1.pred != test$crim01)
+knn1.pred <- knn(train.X1, test.X1, train$crim01, k=100)
+mean(knn1.pred != test$crim01)
+knn1.pred <- knn(train.X1, test.X1, train$crim01, k=200)
+mean(knn1.pred != test$crim01)
+knn2.pred <- knn(train.X2, test.X2, train$crim01, k=1)
+mean(knn2.pred != test$crim01)
+knn2.pred <- knn(train.X2, test.X2, train$crim01, k=5)
+mean(knn2.pred != test$crim01)
+knn2.pred <- knn(train.X2, test.X2, train$crim01, k=10)
+mean(knn2.pred != test$crim01)
+knn2.pred <- knn(train.X2, test.X2, train$crim01, k=20)
+mean(knn2.pred != test$crim01)
+knn2.pred <- knn(train.X2, test.X2, train$crim01, k=50)
+mean(knn2.pred != test$crim01)
+knn2.pred <- knn(train.X2, test.X2, train$crim01, k=100)
+mean(knn2.pred != test$crim01)
+knn2.pred <- knn(train.X2, test.X2, train$crim01, k=200)
+mean(knn2.pred != test$crim01)
+```
+
+Surprisingly, the KNN model with two predictors `tax` and `rad` and k=1 had the best error rate

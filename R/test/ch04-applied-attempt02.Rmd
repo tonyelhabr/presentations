@@ -1,0 +1,314 @@
+---
+title: "Chapter 4"
+output:
+  html_document:
+    toc: true
+---
+
+Source: https://github.com/xw1120/My-Solutions-to-ISLR/blob/master/ch4/ch4.Rmd.
+
+```` {r setup, include = FALSE, cache = FALSE}
+# library(knitr)
+# opts_chunk$set(cache=T)
+options(warn=-1)
+```
+
+--------------------------------------
+
+##Applied Questions
+###Excercise 10a
+```{r fig.height=7, fig.width=10}
+library(ISLR)
+attach(Weekly)
+summary(Weekly)
+pairs(Weekly)
+cor(Weekly[, -9])
+```
+The most apparent pattern is that as the Year increases, the Volume increases with a quadratic form.
+
+```{r}
+plot(Volume, Year)
+```
+
+###Excercise 10b
+```{r}
+glm.fit = glm(Direction~.-Year-Today, data = Weekly, family = binomial)
+summary(glm.fit)
+```
+Only predictor _Lag2_ is statistically significant.
+
+###Excercise 10c
+```{r}
+glm.probs = predict(glm.fit, type = "response")
+contrasts(Direction)
+glm.pred = rep("Down", length(glm.probs))
+glm.pred[glm.probs > .5] = "Up"
+table(glm.pred, Direction)
+mean(glm.pred == Direction)
+```
+The confusion matrix shows that the logistic classifier incorrectly classifies $48/(48+557) = \%7.9$ Ups as Downs, and incorrectly classifies $430/(54+430) = \%88.8$ Downs as Ups.
+
+###Excercise 10d
+```{r}
+train = Year < 2009
+Weekly.test = Weekly[!train, ]
+Direction.test = Direction[!train]
+```
+
+```{r}
+glm.fit = glm(Direction~Lag2, family=binomial, subset=train)
+glm.probs = predict(glm.fit, Weekly.test, type = "response")
+glm.pred = rep("Down", length(glm.probs))
+glm.pred[glm.probs > .5] = "Up"
+table(glm.pred, Direction.test)
+mean(glm.pred == Direction.test)
+```
+
+###Excercise 10e
+```{r}
+library(MASS) # for lda() function
+lda.fit = lda(Direction~Lag2, subset=train)
+lda.pred = predict(lda.fit, Weekly.test)
+lda.class = lda.pred$class
+table(lda.class, Direction.test)
+mean(lda.class == Direction.test)
+```
+
+###Excercise 10f
+```{r}
+qda.fit = qda(Direction~Lag2, subset=train)
+qda.pred = predict(qda.fit, Weekly.test)
+qda.class = qda.pred$class
+table(qda.class, Direction.test)
+mean(qda.class == Direction.test)
+```
+
+###Excercise 10g
+```{r}
+library(class) # for KNN function
+train.X = as.matrix(Lag2[train])
+test.X = as.matrix(Lag2[!train])
+train.Direction = Direction[train]
+set.seed(1)
+knn.pred = knn(train.X, test.X, train.Direction, k = 1)
+table(knn.pred, Direction.test)
+mean(knn.pred == Direction.test)
+```
+
+###Excercise 10h
+Both logistic classifier and LDA have the highest overall accuracy rate %62.5.
+
+###Excercise 10i
+```{r}
+knn_accuracy = c();
+for ( i in 1:100 ) {
+  knn.pred = knn(train.X, test.X, train.Direction, k = i)
+  knn_accuracy[i] = mean(knn.pred == Direction.test)
+}
+plot(1:100, knn_accuracy, xlab = "K", ylab = "Preciction Accuracy")
+which.max(knn_accuracy)
+```
+
+For KNN, the best result can be obtained when K = `r which.max(knn_accuracy)`.
+
+```{r}
+# clean up
+rm(list = ls())
+```
+
+
+###Excercise 13
+```{r fig.height=7, fig.width=10}
+library(MASS)
+summary(Boston)
+crim01 = rep(0, length(Boston$crim))
+crim01[Boston$crim > median(Boston$crim)] = 1
+newBoston = data.frame(crim01 = crim01, subset(Boston, select=-crim))
+rm(crim01) # crucial!
+attach(newBoston)
+summary(newBoston)
+cor(newBoston)
+pairs(newBoston)
+```
+
+We pick out the six discriminant features according to correlation measurement, they are: indus, nox, age, dis, rad, tax.  
+
+Besides, we've also discovered the following correlations among predictors:
+* indus has strong correlation with nox, age, dis, tax
+* nox has strong correlation with age, dis, and moderate correlation with rad, tax, lastat.
+* age has a strong correlation with dis, and a moderate correlation with lstat.
+* dis has moderate correalation with zn
+* rad has strong correlation with tax
+
+---------------------------
+
+Splitting dataset into training set and test set:
+```{r}
+ratio = 0.75 # ratio of training set to whole set
+sample_size = floor(ratio * nrow(newBoston))
+set.seed(1) # make results reproducible
+train_ind = sample(seq_len(nrow(newBoston)),  replace = FALSE, size = sample_size)
+train = rep(FALSE, nrow(newBoston))
+train[train_ind] = TRUE
+train.X = cbind(indus, nox, age, dis, rad, tax)[train, ]
+test.X = newBoston[!train, ]
+train.Y = crim01[train]
+test.Y = crim01[!train]
+```
+
+---------------------------
+
+Fitting using Logistic regression:
+```{r}
+glm.fit = glm(crim01~indus+nox+age+dis+rad+tax, data = newBoston, family = binomial, subset = train)
+summary(glm.fit)
+glm.probs = predict(glm.fit, test.X, type = "response")
+glm.pred = rep(0, length(glm.probs))
+glm.pred[glm.probs > .5] = 1
+table(glm.pred, test.Y)
+mean(glm.pred == test.Y)
+```
+
+Adding interaction terms, we have
+
+```{r}
+glm.fit2 = glm(crim01~indus+nox+age+dis+rad+tax+
+                 indus:nox+indus:age+indus:dis+indus:tax+nox:age+nox:dis+nox:rad+nox:tax+age:lstat+age:dis+age:lstat+dis:zn+rad:tax, 
+               family = binomial, subset = train)
+summary(glm.fit2)
+glm.probs = predict(glm.fit2, test.X, type = "response")
+glm.pred = rep(0, length(glm.probs))
+glm.pred[glm.probs > .5] = 1
+table(glm.pred, test.Y)
+mean(glm.pred == test.Y)
+```
+
+As we can see from above p-values, we only need to keep interactions of nox:age and dis:zn, then we have:
+
+```{r}
+glm.fit3 = glm(crim01~indus+nox+age+dis+rad+tax+nox:age+dis:zn,
+               family = binomial, subset = train)
+summary(glm.fit3)
+glm.probs = predict(glm.fit3, test.X, type = "response")
+glm.pred = rep(0, length(glm.probs))
+glm.pred[glm.probs > .5] = 1
+table(glm.pred, test.Y)
+mean(glm.pred == test.Y)
+```
+
+Getting rid of _nox_, which is not statistically significant:
+
+```{r}
+glm.fit3 = glm(crim01~indus+age+dis+rad+tax+nox:age+dis:zn,
+               family = binomial, subset = train)
+summary(glm.fit3)
+glm.probs = predict(glm.fit3, test.X, type = "response")
+glm.pred = rep(0, length(glm.probs))
+glm.pred[glm.probs > .5] = 1
+table(glm.pred, test.Y)
+mean(glm.pred == test.Y)
+```
+
+However, the prediction accuracy remains the same comparing to the first two models.
+
+We can also try to add some transformations of predictors:
+
+```{r}
+glm.fit4 = glm(crim01~poly(indus,2)+poly(age,2)+poly(dis,2)+poly(rad,2)+poly(tax,2)+nox:age+dis:zn,
+               family = binomial, subset = train)
+summary(glm.fit4)
+glm.probs = predict(glm.fit4, test.X, type = "response")
+glm.pred = rep(0, length(glm.probs))
+glm.pred[glm.probs > .5] = 1
+table(glm.pred, test.Y)
+mean(glm.pred == test.Y)
+```
+
+The squares of indus, dis, rad, tax are statistically significant, therefore, we have the final combinations of predictors:
+
+```{r}
+glm.fit4 = glm(crim01~I(indus^2)+age+I(dis^2)+poly(rad,2)+poly(tax,2)+nox:age+dis:zn,
+               family = binomial, subset = train)
+summary(glm.fit4)
+glm.probs = predict(glm.fit4, test.X, type = "response")
+glm.pred = rep(0, length(glm.probs))
+glm.pred[glm.probs > .5] = 1
+table(glm.pred, test.Y)
+mean(glm.pred == test.Y)
+```
+
+As we can see, the prediction accuracy has increased from %88.98 to %90.55.
+
+Furthurmore, if we adjust the threshold for logistic regression, using
+
+```{r}
+logistic_pred_accuracy = c()
+cnt = 1
+for ( th in seq(0.1, 0.5, 0.01) ) {
+  glm.pred = rep(0, length(glm.probs))
+  glm.pred[glm.probs > th] = 1
+  logistic_pred_accuracy[cnt] = mean(glm.pred == test.Y)
+  cnt = cnt + 1
+}
+logistic_pred_accuracy
+plot(seq(0.1, 0.5, 0.01), logistic_pred_accuracy, xlab = "Threshold", ylab = "Prediction Accuracy (%)")
+```
+
+where, we can get the best result when threshold = `r seq(0.1, 0.5, 0.01)[which.max(logistic_pred_accuracy)]`.
+
+Therefore, the final performance of logistic regression is %`r sprintf("%.2f", max(logistic_pred_accuracy)*100)`.
+
+------------------------------------
+
+Using KNN classifier
+```{r}
+library(class)
+standardized.X = scale(subset(newBoston, select = c(indus, age, dis, rad, tax)))
+train.X = standardized.X[train, ]
+test.X = standardized.X[!train, ]
+knn_accuracy = c();
+for ( i in 1:100 ) {
+  knn.pred = knn(train.X, test.X, train.Y, k = i)
+  knn_accuracy[i] = mean(knn.pred == test.Y)*100
+}
+plot(1:100, knn_accuracy, xlab = "K", ylab = "Prediction Accuracy (%)")
+which.max(knn_accuracy)
+```
+
+When K = `r which.max(knn_accuracy)`, KNN classifier performs the best with the prediction accuracy = %`r sprintf("%.2f", max(knn_accuracy))`.
+
+------------------------------------
+
+Using LDA classifier
+```{r}
+test.X = newBoston[!train, ]
+library(MASS) # for lda() function
+lda.fit = lda(crim01~I(indus^2)+age+I(dis^2)+poly(rad,2)+poly(tax,2)+nox:age+dis:zn, subset=train)
+lda.pred = predict(lda.fit, test.X)
+lda.class = lda.pred$class
+table(lda.class, test.Y)
+```
+
+Prediction accuracy for LDA = %`r sprintf("%.2f", mean(lda.class == test.Y)*100)`.
+
+------------------------------------
+
+Using QDA classifier
+
+```{r}
+qda.fit = qda(crim01~I(indus^2)+age+I(dis^2)+poly(rad,2)+poly(tax,2)+nox:age+dis:zn, subset=train)
+qda.pred = predict(qda.fit, test.X)
+qda.class = qda.pred$class
+table(qda.class, test.Y)
+```
+
+Prediction accuracy for QDA = %`r sprintf("%.2f", mean(qda.class == test.Y)*100)`.
+
+-------------------------------------
+
+```{r fig.height=5, fig.width=7}
+barplot(c(max(logistic_pred_accuracy)*100, max(knn_accuracy), mean(lda.class == test.Y)*100, mean(qda.class == test.Y)*100), col = "red", ylim = c(0,100), names.arg = c("Logistic Regression", "KNN(K = 1)", "LDA", "QDA"), main = "Test Set Classification Accuracy")
+```
+
+__Finally, we found that there is a tie of best performance (%91.34) between logistic regression and KNN ($K = 1$), meaning that the response has a highly non-linear relationship with the predictors used, of which the data were not necessarily drawn from a normal distribution.__
+
